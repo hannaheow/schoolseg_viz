@@ -1,0 +1,153 @@
+---
+title: "Visualizing School Segregation"
+author: "HOW"
+format: html
+editor: visual
+---
+
+## 
+
+```{r load data}
+data2022 <- read_csv("national_data/analytic_data2022.csv")
+data2025 <- read_csv("national_data/analytic_data2025.csv")
+
+data2022$schoolseg22 = as.numeric(data2022$`School segregation raw value`)
+data2025$schoolseg25 = as.numeric(data2025$`School Segregation raw value`)
+data2022$schoolseg22_cilow = as.numeric(data2022$`School segregation CI low`)
+data2025$schoolseg25_cilow = as.numeric(data2025$`School Segregation CI low`)
+data2022$schoolseg22_cihigh = as.numeric(data2022$`School segregation CI high`)
+data2025$schoolseg25_cihigh = as.numeric(data2025$`School Segregation CI high`)
+
+
+dtot = merge(data2022, data2025, by = "5-digit FIPS Code")
+
+dtot$sigchange <- with(dtot, 
+                       schoolseg22 < schoolseg25_cilow | schoolseg22 > schoolseg25_cihigh)
+
+
+dtot$schoolseg_change = dtot$schoolseg25 - dtot$schoolseg22
+
+```
+
+```{r make map of schoolseg_change}
+# Load necessary libraries
+library(tidyverse)
+library(tigris)      # for county shapefiles
+library(sf)          # for working with spatial data
+library(ggplot2)     # for plotting
+library(viridis)     # for color scale
+
+# Optionally, set options to cache shapefiles
+options(tigris_use_cache = TRUE)
+
+# Get U.S. counties shapefile
+counties_sf <- counties(cb = TRUE, resolution = "5m", class = "sf") %>%
+  mutate(FIPS = paste0(STATEFP, COUNTYFP))
+
+# Make sure the FIPS codes in your data match the shapefile format
+dtot <- dtot %>%
+  rename(FIPS = `5-digit FIPS Code`) %>%
+  mutate(FIPS = str_pad(FIPS, width = 5, pad = "0"))
+
+# Join data to spatial shapefile
+map_data <- counties_sf %>%
+  left_join(dtot, by = "FIPS")
+
+
+
+# Add coord_sf with a projection
+ggplot(map_data) +
+  geom_sf(aes(fill = schoolseg_change), color = "grey70", size = 0.01) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90", name = "Change in\nSchool Segregation") +
+  coord_sf(crs = 5070) +  # Albers Equal Area for US
+  theme_minimal() +
+  labs(title = "Change in School Segregation by U.S. County") +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.key.size = unit(0.5, "cm"),
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 9)
+  )
+# positive means that there is MORE segregation in 2025 than in 2022
+# negative means that there is LESS segregation in 2025 than in 2022 
+
+
+```
+
+```{r}
+dtot_bigchange = dtot %>% filter(abs(schoolseg_change)>0.03 ) %>% select(FIPS, `State Abbreviation.x`, Name.x, schoolseg22, schoolseg25, schoolseg_change)
+
+# need some sort of story here..... 
+
+```
+
+```{r}
+# Create a categorical variable for fill
+map_data <- map_data %>%
+  mutate(
+    schoolseg_bin = case_when(
+      schoolseg_change > 0.01  ~ "Increase",
+      schoolseg_change < -0.01 ~ "Decrease",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Plot binary map
+ggplot(map_data) +
+  geom_sf(aes(fill = schoolseg_bin), color = "grey70", size = 0.01) +
+  scale_fill_manual(
+    values = c("Increase" = "purple", "Decrease" = "green"),
+    na.value = "grey90",
+    name = "Change in School Segregation from 2020 to 2023"
+  ) +
+  coord_sf(crs = 5070) +
+  theme_minimal() +
+  labs(title = "") +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.key.size = unit(0.5, "cm"),
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 9)
+  )
+
+```
+
+```{r NOT IN USE make a map where schoolseg_change has to be outside ci }
+# NOT IN USE 
+
+# Prepare dtot: pad FIPS codes and create a "significant increase" flag
+dtot <- dtot %>%
+  rename(FIPS = `5-digit FIPS Code`) %>%
+  mutate(
+    FIPS = str_pad(FIPS, width = 5, pad = "0"),
+    sig_increase = if_else(
+      schoolseg25 > `School Segregation CI high.x`, schoolseg_change, 
+      ifelse(schoolseg25 < 'School Segregation CI low.x', schoolseg_change, NA_real_
+    ))
+  )
+
+# Join with spatial data
+map_data <- counties_sf %>%
+  left_join(dtot, by = "FIPS") %>%
+  filter(!STATEFP %in% c("02", "15", "72"))  # Remove Alaska, Hawaii, Puerto Rico
+
+# Plot
+ggplot(map_data) +
+  geom_sf(aes(fill = sig_increase), color = "grey70", size = 0.1) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90", name = "Significant\nIncrease") +
+  coord_sf(crs = 5070) +
+  theme_minimal() +
+  labs(title = "Counties with Significant Increases in School Segregation") +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.key.size = unit(0.5, "cm"),
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 9)
+  )
+```
