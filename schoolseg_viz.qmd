@@ -8,6 +8,7 @@ editor: visual
 ## 
 
 ```{r load data}
+library(readr)
 data2022 <- read_csv("national_data/analytic_data2022.csv")
 data2025 <- read_csv("national_data/analytic_data2025.csv")
 
@@ -113,6 +114,169 @@ ggplot(map_data) +
     legend.text = element_text(size = 8),
     legend.title = element_text(size = 9)
   )
+
+```
+
+```{r side by side histograms of sfa }
+# Remove NAs in the bin variable for plotting
+filtered_data <- map_data %>%
+  filter(!is.na(schoolseg_bin)) %>% 
+  mutate(sfa = as.numeric(`School funding adequacy raw value`),
+         pop = as.numeric(`Population raw value.y`))
+
+# Create side-by-side histograms using facet_wrap
+ggplot(filtered_data, aes(x = sfa)) +
+  geom_histogram(binwidth = 500, fill = "steelblue", color = "white") +
+  facet_wrap(~schoolseg_bin, scales = "free_y") +
+  labs(
+    title = "Distribution of School Funding Adequacy\n by Change in School Segregation",
+    x = "School Funding Adequacy (Raw Value)",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+
+
+# Plot
+ggplot(filtered_data, aes(
+  x = schoolseg_bin,
+  y = sfa
+)) +
+  # Add boxplot first so it's underneath the points
+  geom_boxplot(
+    width = 0.6,
+    outlier.shape = NA, # Hides outliers since we show all points with jitter
+    alpha = 1,
+    #fill = "",
+    color = "blue",
+    size = 1
+  ) +
+  geom_jitter(aes(size = pop),  # Replace with a real variable like population
+              width = 0.2, alpha = 0.5, shape = 21,
+              stroke = 0.2, color = "black") +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  labs(
+    title = "School Funding Adequacy \nby Change in Segregation from 2022 to 2025",
+    y = "School Funding Adequacy",
+    x = NULL
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r state level side by side }
+
+state_data = dtot %>%
+  filter(`County FIPS Code.x` == "000") %>% 
+  mutate(sfa = as.numeric(`School funding adequacy raw value`),
+         pop = as.numeric(`Population raw value.y`),
+         schoolseg_bin = case_when(
+      schoolseg_change > 0  ~ "Increase",
+      schoolseg_change < 0 ~ "Decrease",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(schoolseg_bin))  # Exclude NAs in binning
+
+
+# Plot with text labels instead of points
+ggplot(state_data, aes(
+  x = schoolseg_bin,
+  y = sfa
+)) +
+  # Boxplot with thick lines
+  geom_boxplot(
+    width = 0.3,
+    outlier.shape = NA,
+    alpha = 0.3,
+    fill = "gray70",
+    size = 1.2
+  ) +
+  # Add state abbreviation as labels
+  geom_text(
+    aes(label = `State Abbreviation.x`),
+    position = position_jitter(width = 0.15, height = 0),
+    size = 4,
+    color = "black",
+    fontface = "bold"
+  ) +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  labs(
+    title = "State-Level School Funding Adequacy by Change in Segregation (2022–2025)",
+    y = "School Funding Adequacy",
+    x = NULL
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+```{r state level w sfa as binary x axis }
+
+
+# Create binary SFA category
+state_data <- data2025 %>%
+  filter(`County FIPS Code` == "000") %>%
+  filter(`State FIPS Code` != "00") %>% 
+  mutate(
+    sfa = as.numeric(`School Funding Adequacy raw value`),
+    pop = as.numeric(`Population raw value`),
+    schoolseg25 = as.numeric(schoolseg25),
+    sfa_bin = ifelse(sfa > 0, "Adequate Funding", "Inadequate Funding")
+  ) %>%
+  filter(!is.na(sfa_bin), !is.na(schoolseg25))
+
+# Plot with sfa_bin on x-axis and schoolseg25 on y-axis
+ggplot(state_data, aes(
+  x = sfa_bin,
+  y = schoolseg25
+)) +
+  # Add boxplot
+  geom_boxplot(
+    width = 0.3,
+    outlier.shape = NA,
+    alpha = 0.2,
+    fill = NA,
+    size = 1,
+    color = "grey"
+  ) +
+  # Add state abbreviation text labels
+  geom_text(
+    aes(label = `State Abbreviation`),
+    position = position_jitter(width = 0.15, height = 0),
+    fontface = "bold",
+    color = "black",
+    alpha = 0.5
+  ) +
+  labs(
+  title = "State-Level School Segregation\n by School Funding Adequacy",
+  caption = paste(
+    "",
+    "\nThe School Segregation Index ranges from 0 to 1.",
+    "Lower values indicate student bodies that reflect the racial and ethnic composition of the county.",
+    "Higher values indicate greater segregation in schools.",
+    "",
+    "States with inadequate school funding tend to have higher",
+    "median segregation levels than states with adequate funding.",
+    sep = "\n"
+  ),
+  y = "School Segregation",
+  x = NULL
+)+
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0),
+    plot.caption = element_text(hjust = 0),
+    plot.title.position = "plot",
+    plot.caption.position = "plot"
+  )
+
 
 ```
 
