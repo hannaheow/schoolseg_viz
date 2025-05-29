@@ -117,7 +117,7 @@ ggplot(map_data) +
 
 ```
 
-```{r side by side histograms of sfa }
+```{r side by side histograms of sfa by change in school seg}
 # Remove NAs in the bin variable for plotting
 filtered_data <- map_data %>%
   filter(!is.na(schoolseg_bin)) %>% 
@@ -166,55 +166,6 @@ ggplot(filtered_data, aes(
     legend.position = "none",
     plot.title = element_text(face = "bold")
   )
-```
-
-```{r state level side by side }
-
-state_data = dtot %>%
-  filter(`County FIPS Code.x` == "000") %>% 
-  mutate(sfa = as.numeric(`School funding adequacy raw value`),
-         pop = as.numeric(`Population raw value.y`),
-         schoolseg_bin = case_when(
-      schoolseg_change > 0  ~ "Increase",
-      schoolseg_change < 0 ~ "Decrease",
-      TRUE ~ NA_character_
-    )
-  ) %>%
-  filter(!is.na(schoolseg_bin))  # Exclude NAs in binning
-
-
-# Plot with text labels instead of points
-ggplot(state_data, aes(
-  x = schoolseg_bin,
-  y = sfa
-)) +
-  # Boxplot with thick lines
-  geom_boxplot(
-    width = 0.3,
-    outlier.shape = NA,
-    alpha = 0.3,
-    fill = "gray70",
-    size = 1.2
-  ) +
-  # Add state abbreviation as labels
-  geom_text(
-    aes(label = `State Abbreviation.x`),
-    position = position_jitter(width = 0.15, height = 0),
-    size = 4,
-    color = "black",
-    fontface = "bold"
-  ) +
-  scale_y_continuous(labels = scales::dollar_format()) +
-  labs(
-    title = "State-Level School Funding Adequacy by Change in Segregation (2022–2025)",
-    y = "School Funding Adequacy",
-    x = NULL
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
 ```
 
 ```{r state level w sfa as binary x axis }
@@ -280,38 +231,31 @@ ggplot(state_data, aes(
 
 ```
 
-```{r NOT IN USE make a map where schoolseg_change has to be outside ci }
-# NOT IN USE 
+```{r experimenting with sfa, school seg, and LE}
+cdat = data2025 %>% filter(`County FIPS Code` != "000") %>% 
+  mutate(sfa = as.numeric(`School Funding Adequacy raw value`), 
+         mhi = as.numeric(`Median Household Income raw value`),
+         le = as.numeric(`Life Expectancy raw value`),
+         sfabin = ifelse(sfa > 0, "Adequate Funding", "Inadequate Funding")) %>% filter(!is.na(sfabin))
 
-# Prepare dtot: pad FIPS codes and create a "significant increase" flag
-dtot <- dtot %>%
-  rename(FIPS = `5-digit FIPS Code`) %>%
-  mutate(
-    FIPS = str_pad(FIPS, width = 5, pad = "0"),
-    sig_increase = if_else(
-      schoolseg25 > `School Segregation CI high.x`, schoolseg_change, 
-      ifelse(schoolseg25 < 'School Segregation CI low.x', schoolseg_change, NA_real_
-    ))
-  )
-
-# Join with spatial data
-map_data <- counties_sf %>%
-  left_join(dtot, by = "FIPS") %>%
-  filter(!STATEFP %in% c("02", "15", "72"))  # Remove Alaska, Hawaii, Puerto Rico
-
-# Plot
-ggplot(map_data) +
-  geom_sf(aes(fill = sig_increase), color = "grey70", size = 0.1) +
-  scale_fill_viridis_c(option = "plasma", na.value = "grey90", name = "Significant\nIncrease") +
-  coord_sf(crs = 5070) +
-  theme_minimal() +
-  labs(title = "Counties with Significant Increases in School Segregation") +
+ggplot(data = cdat, aes(x = schoolseg25, y = le, color = sfabin)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, size = 1.2) +
+  scale_color_manual(
+    values = c("Adequate Funding" = "#1b9e77", "Inadequate Funding" = "#d95f02"),
+    name = "School Funding Adequacy"
+  ) +
+  labs(
+    title = "Life Expectancy vs. School Segregation by Funding Adequacy",
+    x = "Index of School Segregation (2025)",
+    y = "Life Expectancy",
+    color = "School Funding Adequacy"
+  ) +
+  theme_minimal(base_size = 14) +
   theme(
-    axis.text = element_blank(),
-    axis.ticks = element_blank(),
-    panel.grid = element_blank(),
-    legend.key.size = unit(0.5, "cm"),
-    legend.text = element_text(size = 8),
-    legend.title = element_text(size = 9)
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.title = element_text(face = "bold"),
+    legend.position = "top"
   )
+
 ```
